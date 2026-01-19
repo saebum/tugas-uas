@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WargaCare AI - Layanan Pengaduan</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <style>
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>🏛️ WargaCare AI</h1>
+            <p>Formulir Pengaduan Masyarakat</p>
+        </header>
+
+        <div class="card">
+            <form id="complaintForm">
+                <div class="form-group">
+                    <label for="nama">Nama Lengkap:</label>
+                    <input type="text" id="nama" placeholder="Contoh: Budi Santoso" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email (Untuk bukti tiket):</label>
+                    <input type="email" id="email" placeholder="contoh@email.com" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="pesan">Isi Keluhan:</label>
+                    <textarea id="pesan" rows="5" placeholder="Ceritakan detail lokasi dan masalahnya..." required></textarea>
+                </div>
+
+                <button type="submit" id="submitBtn">
+                    <span class="btn-text">Kirim Laporan</span>
+                    <div id="loader" class="loader hidden"></div>
+                </button>
+            </form>
+        </div>
+
+        <div id="resultArea" class="result-card hidden">
+            <div class="result-header">
+                <h3>Balasan AI Officer</h3>
+                <span id="badgeCategory" class="badge">Menunggu...</span>
+            </div>
+            
+            <div class="result-body">
+                <p><strong>Pesan Balasan:</strong></p>
+                <p id="botReply" style="white-space: pre-wrap;"></p>
+            </div>
+            
+            <div class="result-footer">
+                <small>Prioritas: <span id="priorityLevel" class="bold">-</span></small>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- KONFIGURASI ---
+        // PENTING: Ganti URL ini dengan URL Webhook n8n Anda.
+        // Hapus kata '-test' jika workflow n8n sudah 'Active' (Hijau) agar bisa jalan 24 jam.
+        const WEBHOOK_URL = 'https://n8n-re9macilutpq.kol.sumopod.my.id/webhook/lapor-bot'; 
+
+        // Referensi Elemen
+        const form = document.getElementById('complaintForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const btnText = document.querySelector('.btn-text'); // Pastikan class ini ada di tombol
+        const loader = document.getElementById('loader');
+        const resultArea = document.getElementById('resultArea');
+        
+        // Referensi Output
+        const badgeCategory = document.getElementById('badgeCategory');
+        const priorityLevel = document.getElementById('priorityLevel');
+        const botReply = document.getElementById('botReply');
+
+        // Event Listener saat tombol diklik
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault(); // Mencegah refresh halaman
+
+            // 1. Ambil data input
+            const nama = document.getElementById('nama').value;
+            const email = document.getElementById('email').value; // DATA EMAIL
+            const pesan = document.getElementById('pesan').value;
+
+            // 2. Set status Loading
+            submitBtn.disabled = true;
+            if(btnText) btnText.textContent = "Sedang Memproses...";
+            loader.classList.remove('hidden');
+            resultArea.classList.add('hidden');
+
+            try {
+                // 3. Kirim ke n8n
+                const response = await fetch(WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    // Mengirim paket lengkap: Nama, Email, Pesan
+                    body: JSON.stringify({ 
+                        nama: nama, 
+                        email: email, 
+                        pesan: pesan 
+                    })
+                });
+
+                if (!response.ok) throw new Error('Gagal terhubung ke n8n');
+
+                // 4. Baca balasan JSON
+                const data = await response.json();
+
+                // 5. Tampilkan data ke layar HTML
+                botReply.textContent = data.reply || "Tidak ada balasan.";
+                
+                // --- LOGIKA UTAMA DISPLAY ---
+                // Cek apakah data memiliki ticket_info (Laporan Valid) atau null (Spam)
+                
+                if (data.ticket_info) {
+                    // KASUS 1: Laporan Valid (Sukses)
+                    badgeCategory.textContent = data.ticket_info.kategori || "-";
+                    priorityLevel.textContent = data.ticket_info.urgensi || "-";
+                    
+                    // Logika Warna Badge berdasarkan Urgensi
+                    const urgensi = (data.ticket_info.urgensi || '').toLowerCase();
+                    
+                    if(urgensi.includes('tinggi') || urgensi.includes('high')) {
+                        // Merah (Bahaya)
+                        badgeCategory.style.backgroundColor = '#fee2e2'; 
+                        badgeCategory.style.color = '#dc2626';
+                    } else if(urgensi.includes('sedang') || urgensi.includes('medium')) {
+                        // Kuning (Sedang)
+                        badgeCategory.style.backgroundColor = '#fef9c3'; 
+                        badgeCategory.style.color = '#ca8a04';
+                    } else {
+                        // Biru (Normal)
+                        badgeCategory.style.backgroundColor = '#dbeafe'; 
+                        badgeCategory.style.color = '#1e40af';
+                    }
+
+                } else {
+                    // KASUS 2: SPAM / Ditolak (ticket_info is null)
+                    badgeCategory.textContent = "DITOLAK / SPAM";
+                    priorityLevel.textContent = "-";
+                    
+                    // Warna Abu-abu
+                    badgeCategory.style.backgroundColor = '#f3f4f6'; 
+                    badgeCategory.style.color = '#4b5563';
+                }
+
+                // Munculkan area hasil
+                resultArea.classList.remove('hidden');
+
+            } catch (error) {
+                alert('Error: ' + error.message);
+                console.error(error);
+            } finally {
+                // 6. Reset status tombol
+                submitBtn.disabled = false;
+                if(btnText) btnText.textContent = "Kirim Laporan";
+                loader.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
